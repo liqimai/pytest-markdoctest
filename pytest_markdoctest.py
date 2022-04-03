@@ -34,15 +34,18 @@ from _pytest.doctest import (
     Collector,
     DoctestItem,
     get_optionflags,
+    MultipleDoctestFailures,
     _get_runner,
     _get_checker,
     _get_continue_on_failure,
+    _check_all_skipped,
 )
 from _pytest.config.argparsing import Parser
 from _pytest.config import Config
 
 from typing import Optional
 from typing import Iterable
+from typing import List
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -78,6 +81,30 @@ def _is_doctest_markdown(config: Config, path: Path, parent: Collector) -> bool:
 class DoctestMarkdown(pytest.Module):
     obj = None
 
+    #
+    _CODE_BLOCK_RE = re.compile(
+        r"""
+        ^                           # Necessarily at the beginning of a new line
+        (?P<code_all>
+            (?P<code_start>
+                [ \t]*              # Possibly leading spaces
+                \`{3,}              # 3 code marks (backticks) or more
+            )
+            [ \t]*                  # Possibly some spaces or tab
+            (?P<code_class>[\w\-\.]+)?    # or a code class like html, ruby, perl
+            (?:[^\n]*)?             # possibly some text before newline
+            \n                      # newline
+            (?P<code_content>.*?)   # enclosed content
+            # \n+
+            (?<!`)
+            (?P=code_start)         # balanced closing block marks
+            (?!`)
+        )
+        $                # and a new line or end of string
+        """,
+        re.DOTALL | re.MULTILINE | re.VERBOSE,
+    )
+
     def collect(self) -> Iterable[DoctestItem]:
 
         # Inspired by doctest.testfile; ideally we would use it directly,
@@ -96,39 +123,37 @@ class DoctestMarkdown(pytest.Module):
             checker=_get_checker(),
             continue_on_failure=_get_continue_on_failure(self.config),
         )
+        runner.globs = globs  # runner-level globs
 
-        # Inspired by _pytest.doctest.DoctestTextfile; ideally we would use it directly,
-        # but it doesn't support passing a custom parser.
-        parser = MarkdownTestParser()
+        parser = doctest.DocTestParser()
+        charno, lineno = 0, 1
+        for m in self._CODE_BLOCK_RE.finditer(text):
+            # Update lineno (lines before this example)
+            lineno += text.count("\n", charno, m.start())
+            charno = m.start()
 
-        test = parser.get_doctest(text, globs, name, filename, 0)
-        if test.examples:
-            yield DoctestItem.from_parent(self, name=test.name, runner=runner, dtest=test)
+            code_content = m.group("code_content")
+            code_class = m.group("code_class")
+            name = "<%s block at line %s>" % (code_class, lineno)
+            # dummy globs in test. real globs is runner.globs.
+            test = parser.get_doctest(code_content, {}, name, filename, lineno)
+            if test.examples:
+                yield DoctestMarkdownItem.from_parent(self, name=test.name, runner=runner, dtest=test)
+
+            lineno += text.count("\n", charno, m.end())
+            charno = m.end()
 
 
-class MarkdownTestParser(doctest.DocTestParser):
-    """
-    A class used to parse markdown files containing doctest examples.
-    """
-
-    # This regular expression is used to find doctest examples in a
-    # string.  It defines three groups: `source` is the source code
-    # (including leading indentation and prompts); `indent` is the
-    # indentation of the first (PS1) line of the source code; and
-    # `want` is the expected output (including leading indentation).
-    _EXAMPLE_RE = re.compile(
-        r"""
-        # Source consists of a PS1 line followed by zero or more PS2 lines.
-        (?P<source>
-            (?:^(?P<indent> [ ]*) >>>    .*)    # PS1 line
-            (?:\n           [ ]*  \.\.\. .*)*)  # PS2 lines
-        \n?
-        # Want consists of any non-blank lines that do not start with PS1.
-        (?P<want> (?:(?![ ]*$)    # Not a blank line
-                     (?![ ]*>>>)  # Not a line starting with PS1
-                     (?![ ]*```+) # Not a line starting with ```
-                     .+$\n?       # But any other line
-                  )*)
-        """,
-        re.MULTILINE | re.VERBOSE,
-    )
+class DoctestMarkdownItem(DoctestItem):
+    def runtest(self) -> None:
+        assert self.dtest is not None
+        assert self.runner is not None
+        _check_all_skipped(self.dtest)
+        self._disable_output_capturing_for_darwin()
+        failures: List["doctest.DocTestFailure"] = []
+        # Hack DoctestItem to let test share the runner's globs and let
+        # clear_globs=False.
+        self.dtest.globs = self.runner.globs
+        self.runner.run(self.dtest, out=failures, clear_globs=False)  # type: ignore[arg-type]
+        if failures:
+            raise MultipleDoctestFailures(failures)
