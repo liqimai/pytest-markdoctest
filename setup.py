@@ -23,6 +23,7 @@ setup(
     description="A package to doctest your markdown files",
     long_description=read("README.md"),
     py_modules=["pytest_markdoctest"],
+    package_dir={"": "src"},
     python_requires=">=3.5",
     install_requires=["pytest>=6"],
     classifiers=[
