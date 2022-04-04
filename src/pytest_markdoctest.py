@@ -133,12 +133,13 @@ class DoctestMarkdown(pytest.Module):
             charno = m.start()
 
             code_content = m.group("code_content")
-            code_class = m.group("code_class")
-            name = "<%s block at line %s>" % (code_class, lineno)
-            # dummy globs in test. real globs is runner.globs.
-            test = parser.get_doctest(code_content, {}, name, filename, lineno)
-            if test.examples:
-                yield DoctestMarkdownItem.from_parent(self, name=test.name, runner=runner, dtest=test)
+            code_class = m.group("code_class").split()[0]
+            if code_class in ("python", "py", "pycon"):
+                name = "<%s block at line %s>" % (code_class, lineno)
+                # dummy globs in test. real globs is runner.globs.
+                test = parser.get_doctest(code_content, {}, name, filename, lineno)
+                if test.examples:
+                    yield DoctestMarkdownItem.from_parent(self, name=test.name, runner=runner, dtest=test)
 
             lineno += text.count("\n", charno, m.end())
             charno = m.end()

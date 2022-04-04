@@ -137,6 +137,14 @@ def test_general(pytester: Pytester):
         4
         ```
 
+        This shall be ignored, because it is javascript, although it looks like python.
+        ```javascript
+        >>> a = 3
+        3
+        >>> b = 4
+        4
+        ```
+
         Empty block.
         ```python
         ```
