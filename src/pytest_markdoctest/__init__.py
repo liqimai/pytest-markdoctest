@@ -24,28 +24,23 @@
 
 import re
 from pathlib import Path
-from _pytest.pathlib import fnmatch_ex
-import pytest
 import doctest
+import sys
+import ast
+import pytest
 
-# from _pytest import doctest as pytest_doctest
-# import _pytest.doctest as pytest_doctest
+from pytest import Parser, Config, Collector
+from _pytest.pathlib import fnmatch_ex
 from _pytest.doctest import (
-    Collector,
     DoctestItem,
     get_optionflags,
-    MultipleDoctestFailures,
-    _get_runner,
     _get_checker,
     _get_continue_on_failure,
-    _check_all_skipped,
+    _init_runner_class,
 )
-from _pytest.config.argparsing import Parser
-from _pytest.config import Config
 
 from typing import Optional
 from typing import Iterable
-from typing import List
 
 
 def pytest_addoption(parser: Parser) -> None:
@@ -81,7 +76,10 @@ def _is_doctest_markdown(config: Config, path: Path, parent: Collector) -> bool:
 class DoctestMarkdown(pytest.Module):
     obj = None
 
-    #
+    # regular expression for markdown code blocks like
+    # ```python
+    # some python code
+    # ```
     _CODE_BLOCK_RE = re.compile(
         r"""
         ^                           # Necessarily at the beginning of a new line
@@ -117,15 +115,15 @@ class DoctestMarkdown(pytest.Module):
 
         optionflags = get_optionflags(self)
 
-        runner = _get_runner(
+        runner = MarkDoctestRunner(
             verbose=False,
             optionflags=optionflags,
             checker=_get_checker(),
             continue_on_failure=_get_continue_on_failure(self.config),
+            globs=globs,  # runner-level globs
         )
-        runner.globs = globs  # runner-level globs
 
-        parser = doctest.DocTestParser()
+        parser = PythonCodeBlockParser()
         charno, lineno = 0, 1
         for m in self._CODE_BLOCK_RE.finditer(text):
             # Update lineno (lines before this example)
@@ -133,28 +131,115 @@ class DoctestMarkdown(pytest.Module):
             charno = m.start()
 
             code_content = m.group("code_content")
-            code_class = m.group("code_class").split()[0]
+            code_class = m.group("code_class")
+            if code_class is not None:
+                code_class = code_class.split()[0]
             if code_class in ("python", "py", "pycon"):
                 name = "<%s block at line %s>" % (code_class, lineno)
                 # dummy globs in test. real globs is runner.globs.
                 test = parser.get_doctest(code_content, {}, name, filename, lineno)
                 if test.examples:
-                    yield DoctestMarkdownItem.from_parent(self, name=test.name, runner=runner, dtest=test)
+                    yield DoctestItem.from_parent(self, name=test.name, runner=runner, dtest=test)
 
             lineno += text.count("\n", charno, m.end())
             charno = m.end()
 
 
-class DoctestMarkdownItem(DoctestItem):
-    def runtest(self) -> None:
-        assert self.dtest is not None
-        assert self.runner is not None
-        _check_all_skipped(self.dtest)
-        self._disable_output_capturing_for_darwin()
-        failures: List["doctest.DocTestFailure"] = []
-        # Hack DoctestItem to let test share the runner's globs and let
-        # clear_globs=False.
-        self.dtest.globs = self.runner.globs
-        self.runner.run(self.dtest, out=failures, clear_globs=False)  # type: ignore[arg-type]
-        if failures:
-            raise MultipleDoctestFailures(failures)
+class ScriptBlockParser(doctest.DocTestParser):
+    """
+    A parser for script code blocks (lines not starting with '>>>').
+    """
+
+    def parse(self, string, name="<string>"):
+        """
+        parse string into examples.
+        """
+        ast_tree = ast.parse(string)
+        # Extract options directive from the source.
+        options = self._find_options(string, name, 0)
+        if sys.version_info[:3] > (3, 9):
+            statements = [ast.unparse(element) for element in ast_tree.body]
+        elif sys.version_info[:3] > (3, 8):
+            statements = self._split_into_statements(string, ast_tree)
+        else:
+            statements = [self._unparse(element) for element in ast_tree.body]
+
+        examples = []
+        for element, stmt in zip(ast_tree.body, statements):
+            # Given ELLIPSIS option and  want="...", any output is valid
+            # output, because we do not restrict the output of script
+            # block.
+            options[doctest.ELLIPSIS] = True
+
+            # create an example for the statement
+            eg = doctest.Example(
+                stmt,
+                want="...",
+                lineno=element.lineno - 1,
+                indent=0,
+                options=options,
+            )
+            # doctest.Example.__init__ always adds a tail '\n' to want,
+            # which is not expected here, so we force it to be "..."
+            # without '\n', so it can match anything.
+            eg.want = "..."
+            examples.append(eg)
+        return examples
+
+    def _unparse(self, ast_node):
+        from pytest_markdoctest.unparse import Unparser
+        from io import StringIO
+
+        stmt = StringIO()
+        Unparser(ast_node, stmt)
+        return stmt.getvalue()
+
+    def _split_into_statements(self, source, ast_tree):
+        def get_source_stmt(element: ast.stmt):
+            ls = lines[element.lineno - 1 : element.end_lineno]
+            ls[-1] = ls[-1][: element.end_col_offset]
+            ls[0] = ls[0][element.col_offset :]
+            return "\n".join(ls)
+
+        lines = source.splitlines()
+        statements = [get_source_stmt(element) for element in ast_tree.body]
+        return statements
+
+
+class PythonCodeBlockParser:
+    doctest_parser = doctest.DocTestParser()
+    script_parser = ScriptBlockParser()
+
+    def get_doctest(self, string, globs, name, filename, lineno):
+        """
+        If `string` starts with '>>>', treat it as an REPL block,
+        otherwise treat it as an script block.
+        """
+        if string.startswith(">>>"):
+            return self.doctest_parser.get_doctest(string, globs, name, filename, lineno)
+        else:
+            return self.script_parser.get_doctest(string, globs, name, filename, lineno)
+
+
+class MarkDoctestRunner(_init_runner_class()):
+    def __init__(self, *args, globs={}, **kwargs):
+        """
+        Inheritance chain:
+
+        MarkDoctestRunner -> PytestDoctestRunner
+                          -> DebugRunner -> DocTestRunner
+
+        Nearly same as PytestDoctestRunner, except that it has an
+        runner-level dict storing globals variables.
+        """
+        super().__init__(*args, **kwargs)
+        self.globs = globs  # runner-level globs
+
+    def run(self, test, compileflags=None, out=None, clear_globs=False):
+        """
+        clear_globs is default to False, because we want to keep global
+        variables across tests.
+        """
+        # tests share the runner's globs.
+        test.globs = self.globs
+        return super().run(test, compileflags, out, clear_globs)

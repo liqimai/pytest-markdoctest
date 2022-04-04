@@ -24,7 +24,7 @@ setup(
     long_description=read("README.md"),
     py_modules=["pytest_markdoctest"],
     package_dir={"": "src"},
-    python_requires=">=3.5",
+    python_requires=">=3.6",
     install_requires=["pytest>=6"],
     classifiers=[
         "Development Status :: 4 - Beta",
@@ -33,7 +33,6 @@ setup(
         "Topic :: Software Development :: Testing",
         "Programming Language :: Python",
         "Programming Language :: Python :: 3",
-        "Programming Language :: Python :: 3.5",
         "Programming Language :: Python :: 3.6",
         "Programming Language :: Python :: 3.7",
         "Programming Language :: Python :: 3.8",

@@ -1,4 +1,3 @@
-'''
 First we import math.
 ```python
 >>> import math
@@ -8,8 +7,8 @@ Then do some calculation:
 ```python
 >>> 2 + 3
 5
->>> math.sqrt(2)
-1.414
+>>> math.pow(2, 2)
+4.0
 ```
 
 and more.
@@ -27,4 +26,3 @@ This shall be ignored, because it is not python.
 > b = 4
 4
 ```
-'''
