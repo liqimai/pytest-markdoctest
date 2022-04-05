@@ -82,6 +82,16 @@ class DoctestMarkdown(pytest.Module):
     # ```
     _CODE_BLOCK_RE = re.compile(
         r"""
+        (?P<option_list>            # html comment with doctest option
+                                    # such as <!--- doctest: ... --->
+            (
+                ^                       # Necessarily at the beginning of a new line
+                [ \t]*                  # Possibly leading spaces
+                <!--([^\n]*?)-->             # html comment
+                [ \t]*                  # trailing spaces
+                \n                      # a newline
+            )*                      # Zero or more html comments
+        )
         ^                           # Necessarily at the beginning of a new line
         (?P<code_all>
             (?P<code_start>
@@ -124,20 +134,18 @@ class DoctestMarkdown(pytest.Module):
         )
 
         parser = PythonCodeBlockParser()
-        charno, lineno = 0, 1
+        charno, lineno = 0, 0
         for m in self._CODE_BLOCK_RE.finditer(text):
             # Update lineno (lines before this example)
             lineno += text.count("\n", charno, m.start())
             charno = m.start()
 
-            code_content = m.group("code_content")
             code_class = m.group("code_class")
             if code_class is not None:
                 code_class = code_class.split()[0]
             if code_class in ("python", "py", "pycon"):
                 name = "<%s block at line %s>" % (code_class, lineno)
-                # dummy globs in test. real globs is runner.globs.
-                test = parser.get_doctest(code_content, {}, name, filename, lineno)
+                test = parser.get_doctest(m, name, filename, lineno + 1)
                 if test.examples:
                     yield DoctestItem.from_parent(self, name=test.name, runner=runner, dtest=test)
 
@@ -207,18 +215,56 @@ class ScriptBlockParser(doctest.DocTestParser):
 
 
 class PythonCodeBlockParser:
+
+    _OPTION_RE = re.compile(
+        r"""
+        (?P<option>                 # html comment with doctest option
+                                    # such as <!--- doctest: ... --->
+            <!--+\s*                # opening comment
+            (?P<option_content>
+                doctest:\s*([^\n\'"]*?) # doctest option
+            )
+            \s*--+>                # closing comment
+        )
+        """,
+        re.DOTALL | re.MULTILINE | re.VERBOSE,
+    )
+
     doctest_parser = doctest.DocTestParser()
     script_parser = ScriptBlockParser()
 
-    def get_doctest(self, string, globs, name, filename, lineno):
+    def get_doctest(self, code_block: "re.Match", name, filename, lineno):
         """
         If `string` starts with '>>>', treat it as an REPL block,
         otherwise treat it as an script block.
         """
-        if string.startswith(">>>"):
-            return self.doctest_parser.get_doctest(string, globs, name, filename, lineno)
+
+        code_content = code_block.group("code_content")
+        option_list = code_block.group("option_list")
+
+        # parse code_content into examples
+        code_content_lineno = lineno + option_list.count("\n") + 1
+        # dummy globs in test. real globs is runner.globs.
+        globs = {}
+        if code_content.startswith(">>>"):
+            test = self.doctest_parser.get_doctest(code_content, globs, name, filename, code_content_lineno)
         else:
-            return self.script_parser.get_doctest(string, globs, name, filename, lineno)
+            test = self.script_parser.get_doctest(code_content, globs, name, filename, code_content_lineno)
+
+        # parse test-level options
+        test.options = {}
+        for opt in self._OPTION_RE.finditer(option_list):
+            # compose a valid doctest directive, and parse it by
+            # doctest.DocTestParser._find_options
+            directive = "a # " + opt.group("option_content")
+            opt = self.doctest_parser._find_options(directive, name, lineno)
+            test.options.update(opt)
+
+        # update example-level options
+        for eg in test.examples:
+            eg.options = {**test.options, **eg.options}
+
+        return test
 
 
 class MarkDoctestRunner(_init_runner_class()):
