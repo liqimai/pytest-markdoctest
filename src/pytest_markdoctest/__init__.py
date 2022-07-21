@@ -163,8 +163,8 @@ class ScriptBlockParser(doctest.DocTestParser):
         parse string into examples.
         """
         ast_tree = ast.parse(string)
-        # Extract options directive from the source.
-        options = self._find_options(string, name, 0)
+        # directives are ignored in script block.
+        options = {}
         if sys.version_info[:3] > (3, 9):
             statements = [ast.unparse(element) for element in ast_tree.body]
         elif sys.version_info[:3] > (3, 8):

@@ -19,10 +19,13 @@ and more.
 Hello World!
 ```
 
-This shall be ignored, because it is not python.
+The block below shall be ignored, because it is not specified as python but javascript. 
+````markdown
 ```javascript
 > a = 3
 3
 > b = 4
 4
 ```
+````
+Only code blocks tagged by `python`, `py`, `pycon` are considered as python code block.

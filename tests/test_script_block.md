@@ -13,16 +13,8 @@ Then we can use imported packages and predefined functions.
 ```python
 >>> math.pow(2, 2)
 4.0
->>> pprint({c: ord(c) for c in 'Hello World!'}, indent=4)
-{   ' ': 32,
-    '!': 33,
-    'H': 72,
-    'W': 87,
-    'd': 100,
-    'e': 101,
-    'l': 108,
-    'o': 111,
-    'r': 114}
+>>> pprint({c: ord(c) for c in 'Hello'})
+{'H': 72, 'e': 101, 'l': 108, 'o': 111}
 >>> echo([1,2,3])
 [1, 2, 3]
 ```
@@ -32,8 +24,10 @@ The stdout and stderr of script block is not checked, any output are consider as
 print("Hello World!")
 ```
 
-Script block only fails if the code block raises an exception.
+Script block only fails to pass the test if the code block raises an exception.
+
+<!-- doctest: +SKIP -->
 ```python
-# doctest: +SKIP
+# this shall fails to pass the test
 a = 3 / 0
 ```
