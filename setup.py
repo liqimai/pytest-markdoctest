@@ -1,15 +1,14 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import os
-import codecs
 from setuptools import setup
 
 
-def read(fname):
-    file_path = os.path.join(os.path.dirname(__file__), fname)
-    return codecs.open(file_path, encoding="utf-8").read()
+with open("README.md") as readme_file:
+    readme = readme_file.read()
 
+with open("requirements.txt") as requirements_file:
+    requirements = requirements_file.read().splitlines()
 
 setup(
     name="pytest-markdoctest",
@@ -21,11 +20,11 @@ setup(
     license="MIT",
     url="https://github.com/liqimai/pytest-markdoctest",
     description="A package to doctest your markdown files",
-    long_description=read("README.md"),
+    long_description=readme,
     py_modules=["pytest_markdoctest"],
     package_dir={"": "src"},
-    python_requires=">=3.6",
-    install_requires=["pytest>=6"],
+    python_requires=">=3.7",
+    install_requires=requirements,
     classifiers=[
         "Development Status :: 4 - Beta",
         "Framework :: Pytest",
