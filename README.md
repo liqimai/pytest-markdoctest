@@ -3,7 +3,7 @@
 [![PyPI version](https://img.shields.io/pypi/v/pytest-markdoctest.svg)](https://pypi.org/project/pytest-markdoctest)
 [![Python versions](https://img.shields.io/pypi/pyversions/pytest-markdoctest.svg)](https://pypi.org/project/pytest-markdoctest)
 
-A package to doctest your markdown files. 
+A pytest plugin to doctest your markdown files.
 
 Help you test your python blocks in markdown in `doctest` style, and make sure them behaving as you expected. This is especially helpful when dealing with markdown files containing many demo code, such as 
 - A project documented in markdown files, 
