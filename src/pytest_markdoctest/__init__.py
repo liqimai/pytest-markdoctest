@@ -134,7 +134,7 @@ class DoctestMarkdown(pytest.Module):
         )
 
         parser = PythonCodeBlockParser()
-        charno, lineno = 0, 0
+        charno, lineno = 0, 1
         for m in self._CODE_BLOCK_RE.finditer(text):
             # Update lineno (lines before this example)
             lineno += text.count("\n", charno, m.start())
@@ -144,8 +144,9 @@ class DoctestMarkdown(pytest.Module):
             if code_class is not None:
                 code_class = code_class.split()[0]
             if code_class in ("python", "py", "pycon"):
-                name = "<%s block at line %s>" % (code_class, lineno)
-                test = parser.get_doctest(m, name, filename, lineno + 1)
+                content_line_no = lineno + m.group("option_list").count("\n")
+                name = "<%s block at line %s>" % (code_class, content_line_no)
+                test = parser.get_doctest(m, name, filename, lineno)
                 if test.examples:
                     yield DoctestItem.from_parent(self, name=test.name, runner=runner, dtest=test)
 
@@ -243,7 +244,7 @@ class PythonCodeBlockParser:
         option_list = code_block.group("option_list")
 
         # parse code_content into examples
-        code_content_lineno = lineno + option_list.count("\n") + 1
+        code_content_lineno = lineno + option_list.count("\n")
         # dummy globs in test. real globs is runner.globs.
         globs = {}
         if code_content.startswith(">>>"):
