@@ -22,6 +22,10 @@
 # OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
+__author__ = """Qimai Li"""
+__email__ = "liqimai@qq.com"
+__version__ = "0.1.0"
+
 import re
 from pathlib import Path
 import doctest
