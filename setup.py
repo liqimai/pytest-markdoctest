@@ -1,8 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from setuptools import setup
-
+from setuptools import setup, find_packages
 
 with open("README.md") as readme_file:
     readme = readme_file.read()
@@ -22,7 +21,9 @@ setup(
     description="A pytest plugin to doctest your markdown files",
     long_description=readme,
     long_description_content_type="text/markdown",
-    py_modules=["pytest_markdoctest"],
+    # py modules is for single files, not folders.
+    # py_modules=["pytest_markdoctest"],
+    packages=find_packages(where="src"),
     package_dir={"": "src"},
     python_requires=">=3.7",
     install_requires=requirements,
