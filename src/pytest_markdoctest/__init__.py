@@ -127,7 +127,7 @@ class DoctestMarkdown(pytest.Module):
         name = self.path.name
         globs = {"__name__": "__main__"}
 
-        optionflags = get_optionflags(self)
+        optionflags = get_optionflags(self.config)
 
         runner = MarkDoctestRunner(
             verbose=False,
